@@ -110,6 +110,34 @@ impl UiAnchor {
             + (self.right * (x * self.half_width) + self.up * (y * self.half_height)).as_dvec3()
     }
 
+    /// Place once per menu session, using the untracked seated camera. Submenus
+    /// and head motion retain the same world surface until the menu is closed.
+    fn update_menu(
+        anchor: &mut Option<Self>,
+        open: bool,
+        seat: &Camera,
+        fov: xr::Fovf,
+        size: (u32, u32),
+    ) {
+        if !open {
+            *anchor = None;
+            return;
+        }
+        let menu = anchor.get_or_insert_with(|| {
+            let level = Camera {
+                pitch: 0.0,
+                roll: 0.0,
+                ..*seat
+            };
+            let distance = 0.5;
+            let center = level.position + (level.forward() * distance).as_dvec3();
+            Self::menu(center, &level, fov, distance, size)
+        });
+        // Resizing the desktop must preserve the panel's aspect and mouse mapping
+        // without moving its centre or rotating it towards the headset.
+        menu.half_width = menu.half_height * size.0.max(1) as f32 / size.1.max(1) as f32;
+    }
+
     fn transform(&self, eye: &Camera, projection: Mat4) -> Mat4 {
         let position = (self.origin - eye.position).as_vec3();
         let basis = Mat4::from_cols(
@@ -592,7 +620,8 @@ impl Vr {
         // still recenters the seated origin in poll().
         let valid = xr::ViewStateFlags::POSITION_VALID | xr::ViewStateFlags::ORIENTATION_VALID;
         if !view_state.contains(valid) {
-            self.frame_stream.end(frame.predicted_display_time, self.blend, &[])?;
+            self.frame_stream
+                .end(frame.predicted_display_time, self.blend, &[])?;
             return Ok(false);
         }
         let midpoint = (xr_position(views[0].pose) + xr_position(views[1].pose)) * 0.5;
@@ -724,7 +753,17 @@ impl Vr {
         }
         renderer.set_env_heading(None);
         let menu_open = !menu_range.is_empty();
-        self.place_cursor(menu_open, cockpit_pointer_enabled, cursor_position, desktop_size, bus_pose, &eye_cameras, &eye_projections, &ui_cameras, views[0].fov);
+        self.place_cursor(
+            menu_open,
+            cockpit_pointer_enabled,
+            cursor_position,
+            desktop_size,
+            bus_pose,
+            &eye_cameras,
+            &eye_projections,
+            &vr_base,
+            views[0].fov,
+        );
         let menu_transforms = [0, 1].map(|eye| {
             self.menu_anchor
                 .map(|anchor| anchor.transform(&ui_cameras[eye], ui_projections[eye]))
@@ -745,12 +784,27 @@ impl Vr {
                     }
                 })
         });
-        let navigator = navigator.zip(bus_pose).and_then(|((index, display), (position, body))| {
-            let (texture, rect) = scene.overlays.get(index)?;
-            let aspect = (rect[2] - rect[0]) / (rect[3] - rect[1]);
-            if !aspect.is_finite() || aspect <= 0.0 { return None; }
-            Some((*texture, [0, 1].map(|eye| display.transform(position, body, &eye_cameras[eye], eye_projections[eye], aspect))))
-        });
+        let navigator = navigator
+            .zip(bus_pose)
+            .and_then(|((index, display), (position, body))| {
+                let (texture, rect) = scene.overlays.get(index)?;
+                let aspect = (rect[2] - rect[0]) / (rect[3] - rect[1]);
+                if !aspect.is_finite() || aspect <= 0.0 {
+                    return None;
+                }
+                Some((
+                    *texture,
+                    [0, 1].map(|eye| {
+                        display.transform(
+                            position,
+                            body,
+                            &eye_cameras[eye],
+                            eye_projections[eye],
+                            aspect,
+                        )
+                    }),
+                ))
+            });
         renderer.render_xr_ui(
             scene,
             &targets,
@@ -802,11 +856,22 @@ impl Vr {
         Ok(true)
     }
 
-    /// Where the menu and the cursor hang in front of the eyes this frame: the menu before the
-    /// head while it is open, the cursor on the menu, on what it points at in the bus (kept in
+    /// The menu stays at the seated camera until closed. The cursor is on the menu,
+    /// on what it points at in the bus (kept in
     /// the bus's frame as it drives on) or before the eyes, hidden after ten idle seconds.
     #[allow(clippy::too_many_arguments)]
-    fn place_cursor(&mut self, menu_open: bool, cockpit_pointer_enabled: bool, cursor_position: (f32, f32), desktop_size: (u32, u32), bus_pose: Option<(DVec3, Mat4)>, eye_cameras: &[Camera; 2], eye_projections: &[Mat4; 2], ui_cameras: &[Camera; 2], fov: xr::Fovf) {
+    fn place_cursor(
+        &mut self,
+        menu_open: bool,
+        cockpit_pointer_enabled: bool,
+        cursor_position: (f32, f32),
+        desktop_size: (u32, u32),
+        bus_pose: Option<(DVec3, Mat4)>,
+        eye_cameras: &[Camera; 2],
+        eye_projections: &[Mat4; 2],
+        seat: &Camera,
+        fov: xr::Fovf,
+    ) {
         if !menu_open
             && cockpit_pointer_enabled
             && self
@@ -827,19 +892,7 @@ impl Vr {
             self.last_cursor_move = Some(Instant::now());
             self.cursor_menu_open = false;
         }
-        if menu_open {
-            let center = (ui_cameras[0].position + ui_cameras[1].position) * 0.5
-                + (ui_cameras[0].forward() * 2.0).as_dvec3();
-            self.menu_anchor = Some(UiAnchor::menu(
-                center,
-                &ui_cameras[0],
-                fov,
-                2.0,
-                desktop_size,
-            ));
-        } else {
-            self.menu_anchor = None;
-        }
+        UiAnchor::update_menu(&mut self.menu_anchor, menu_open, seat, fov, desktop_size);
         let moved = self.last_cursor_position.is_none_or(|p| {
             (p.0 - cursor_position.0).abs() > 0.5 || (p.1 - cursor_position.1).abs() > 0.5
         }) || self.cursor_menu_open != menu_open;
@@ -1312,6 +1365,9 @@ fn zoom_projection(mut projection: Mat4, zoom: f32) -> Mat4 {
     projection.y_axis.y *= zoom;
     projection
 }
+
+#[cfg(test)]
+mod menu_anchor_tests;
 
 #[cfg(test)]
 mod zoom_tests {
