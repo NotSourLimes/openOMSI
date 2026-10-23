@@ -611,15 +611,28 @@ impl Renderer {
 
     /// The main pass's batches recorded as render bundles on several threads (none with
     /// OMSI_NO_BUNDLES).
-    pub(crate) fn record_main_bundles(&self, scene: &Scene, f: &FrameCtx, plan: &DrawPlan) -> Vec<wgpu::RenderBundle> {
+    pub(crate) fn record_main_bundles(
+        &self,
+        scene: &Scene,
+        f: &FrameCtx,
+        plan: &DrawPlan,
+    ) -> Vec<wgpu::RenderBundle> {
         // OMSI_NO_BUNDLES=1 records the main pass directly, for comparison. (Splitting the
         // pass in two to finish the halves side by side was tried as well: the second half
         // has to load the first one's targets back into the GPU's tile memory, which cost
         // more GPU time than it saved on the CPU.)
         if !f.env.no_bundles {
             let pp = self.main_pass(f.enhanced, f.reflection_frame);
-            let format = if f.masked_frame { HDR_FORMAT } else { self.format };
-            let batches = if plan.presurface_prefill(self, f) { &plan.main_batches[plan.presurface_batch_end..] } else { &plan.main_batches };
+            let format = if f.masked_frame {
+                HDR_FORMAT
+            } else {
+                self.format
+            };
+            let batches = if plan.presurface_prefill(self, f) {
+                &plan.main_batches[plan.presurface_batch_end..]
+            } else {
+                &plan.main_batches
+            };
             let camera = scene.camera_bind_group.as_ref().expect("camera bind group");
             // The window's bundles of the last frame are drawn again where this frame's
             // batches are the same and name the same buffers and bind groups: a bundle holds
@@ -630,9 +643,18 @@ impl Renderer {
             // traffic moves, come last), the parts before them are kept.
             // The mirrors' the same, each its own (by its picture's texture): two or three
             // mirror pictures a frame recorded some 1.5 ms of bundles each.
-            let kept = f.with_overlays && f.projection.is_none() && !f.second_eye;
-            let mirror = (!f.with_overlays && !f.second_eye).then_some(f.exclude_texture).flatten();
-            let mode = (f.enhanced, f.reflection_frame, format, self.options.msaa, rt_gbuf());
+            let kept = (f.with_overlays && f.projection.is_none() && !f.second_eye)
+                || (!f.with_overlays && f.xr_view);
+            let mirror = (!f.with_overlays && !f.second_eye)
+                .then_some(f.exclude_texture)
+                .flatten();
+            let mode = (
+                f.enhanced,
+                f.reflection_frame,
+                format,
+                self.options.msaa,
+                rt_gbuf(),
+            );
             let chunks = bundle_chunks(self.encoding_pool.as_ref(), batches);
             let mut reuse: Vec<Option<wgpu::RenderBundle>> = vec![None; chunks.len()];
             // (what a part binds is kept once its batches repeat: while driving they change every frame)
@@ -647,7 +669,9 @@ impl Renderer {
                 if let Some(c) = last {
                     if c.mode == mode && c.camera == *camera {
                         for (k, chunk) in chunks.iter().enumerate() {
-                            if let Some((_, r, bundle)) = c.parts.get(k).filter(|(b, ..)| *b == **chunk) {
+                            if let Some((_, r, bundle)) =
+                                c.parts.get(k).filter(|(b, ..)| *b == **chunk)
+                            {
                                 repeated[k] = true;
                                 if r.as_ref().is_some_and(|r| same_resources(scene, chunk, r)) {
                                     reuse[k] = Some(bundle.clone());
@@ -655,7 +679,7 @@ impl Renderer {
                             }
                         }
                         if reuse.iter().all(Option::is_some) && c.parts.len() == chunks.len() {
-                            if kept {
+                            if f.with_overlays {
                                 self.history.bundle_stats.set((0, reuse.len()));
                             }
                             return reuse.into_iter().flatten().collect();
@@ -665,9 +689,21 @@ impl Renderer {
             }
             let kept_parts = reuse.iter().filter(|b| b.is_some()).count();
             if f.with_overlays {
-                self.history.bundle_stats.set((chunks.len() - kept_parts, kept_parts));
+                self.history
+                    .bundle_stats
+                    .set((chunks.len() - kept_parts, kept_parts));
             }
-            let bundles = record_bundles(&self.device, self.encoding_pool.as_ref(), scene, &chunks, &reuse, pp, camera, format, self.options.msaa);
+            let bundles = record_bundles(
+                &self.device,
+                self.encoding_pool.as_ref(),
+                scene,
+                &chunks,
+                &reuse,
+                pp,
+                camera,
+                format,
+                self.options.msaa,
+            );
             // (not when a part could not be recorded: it would be left out frame after frame;
             // and a mirror's or an eye's picture leaves the window's alone - it cleared them,
             // so with the mirrors on the window never kept a bundle)
@@ -680,7 +716,13 @@ impl Renderer {
                     .iter()
                     .zip(&bundles)
                     .zip(&repeated)
-                    .map(|((chunk, b), &again)| (chunk.to_vec(), again.then(|| batch_resources(scene, chunk)), b.clone().expect("whole")))
+                    .map(|((chunk, b), &again)| {
+                        (
+                            chunk.to_vec(),
+                            again.then(|| batch_resources(scene, chunk)),
+                            b.clone().expect("whole"),
+                        )
+                    })
                     .collect(),
             };
             if kept {

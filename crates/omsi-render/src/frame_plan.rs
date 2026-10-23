@@ -512,6 +512,8 @@ pub(crate) struct ViewHistory {
 
 #[derive(Default)]
 pub(crate) struct ViewCulling {
+    /// Each eye retains its own opaque batch recordings as well as LOD history.
+    pub(crate) bundles: Option<passes::batch::MainBundles>,
     pub(crate) drawn: Vec<u64>,
     pub(crate) sizes: hashbrown::HashMap<[u64; 4], f32>,
     pub(crate) scratch: hashbrown::HashMap<[u64; 4], f32>,
