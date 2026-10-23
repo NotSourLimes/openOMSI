@@ -544,31 +544,96 @@ impl Renderer {
     }
 
     /// OMSI_PROFILE: the frame's counts, and every ten seconds what each asset costs.
-    pub(crate) fn count_draws(&mut self, scene: &Scene, with_overlays: bool, visible: usize, plan: &DrawPlan, shadow_batches: &[Vec<Batch>; SHADOW_LISTS]) {
-        let DrawPlan { main_batches, prepass_batches, main_draws, .. } = plan;
-        if with_overlays {
-            self.frame_draws.0 += main_batches.len() + prepass_batches.len() + shadow_batches.iter().map(Vec::len).sum::<usize>();
-            self.frame_draws.1 += visible;
+    pub(crate) fn count_draws(
+        &mut self,
+        scene: &Scene,
+        with_overlays: bool,
+        visible: &[(usize, f32, bool)],
+        plan: &DrawPlan,
+        shadow_batches: &[Vec<Batch>; SHADOW_LISTS],
+        timer_view: usize,
+    ) {
+        let DrawPlan {
+            main_batches,
+            prepass_batches,
+            main_draws,
+            ..
+        } = plan;
+        let visible_count = visible.len();
+        if self.profiling && timer_view >= 2 {
+            let keys = if timer_view == 2 {
+                [
+                    "left eye pictures",
+                    "left eye visible meshes",
+                    "left eye visible AI meshes",
+                    "left eye main batches",
+                    "left eye blended draws",
+                    "left eye main ktris",
+                    "left eye prepass ktris",
+                ]
+            } else {
+                [
+                    "right eye pictures",
+                    "right eye visible meshes",
+                    "right eye visible AI meshes",
+                    "right eye main batches",
+                    "right eye blended draws",
+                    "right eye main ktris",
+                    "right eye prepass ktris",
+                ]
+            };
+            let tris = |bs: &[Batch]| {
+                bs.iter()
+                    .map(|b| b.count as f64 / 3.0 * b.instances.len() as f64)
+                    .sum::<f64>()
+                    / 1000.0
+            };
+            let values = [
+                1.0,
+                visible_count as f64,
+                visible
+                    .iter()
+                    .filter(|(i, _, _)| scene.instances[*i].min_mesh_pixels > 0.0)
+                    .count() as f64,
+                (main_batches.len() + plan.cab_batches.len()) as f64,
+                main_draws[1] as f64,
+                tris(main_batches) + tris(&plan.cab_batches),
+                tris(prepass_batches),
+            ];
+            let mut counts = self.counts.borrow_mut();
+            for (key, value) in keys.into_iter().zip(values) {
+                *counts.entry(key).or_default() += value;
+            }
         }
-        if self.profiling && !with_overlays {
+        if with_overlays {
+            self.frame_draws.0 += main_batches.len()
+                + prepass_batches.len()
+                + shadow_batches.iter().map(Vec::len).sum::<usize>();
+            self.frame_draws.1 += visible_count;
+        }
+        if self.profiling && timer_view == 0 {
             let mut c = self.counts.borrow_mut();
             *c.entry("mirror pictures").or_default() += 1.0;
-            *c.entry("mirror visible instances").or_default() += visible as f64;
+            *c.entry("mirror visible instances").or_default() += visible_count as f64;
         }
         if self.profiling && with_overlays {
             let mut c = self.counts.borrow_mut();
             *c.entry("scene instances").or_default() += scene.instances.len() as f64;
-            *c.entry("visible instances").or_default() += visible as f64;
+            *c.entry("visible instances").or_default() += visible_count as f64;
             *c.entry("bounds users").or_default() += scene.bounds_users.len() as f64;
             *c.entry("main draws").or_default() += (main_draws[0] + main_draws[1]) as f64;
             *c.entry("opaque draws").or_default() += main_draws[0] as f64;
             *c.entry("blended draws").or_default() += main_draws[1] as f64;
             *c.entry("main batches").or_default() += main_batches.len() as f64;
             *c.entry("presurface views").or_default() += plan.has_presurface as u8 as f64;
-            *c.entry("terrain paint batches").or_default() += main_batches.iter().filter(|b| b.pipe / 4 == PIPE_TERRAIN_PAINT).count() as f64;
+            *c.entry("terrain paint batches").or_default() += main_batches
+                .iter()
+                .filter(|b| b.pipe / 4 == PIPE_TERRAIN_PAINT)
+                .count() as f64;
             // the state the main pass's bundles set (each part starts afresh), and what an
             // order by material within the opaque runs would set instead
-            let (pipes, binds) = state_changes(&bundle_chunks(self.encoding_pool.as_ref(), main_batches));
+            let (pipes, binds) =
+                state_changes(&bundle_chunks(self.encoding_pool.as_ref(), main_batches));
             *c.entry("main pipeline switches").or_default() += pipes as f64;
             *c.entry("main material binds").or_default() += binds as f64;
             let (pipes_m, binds_m) = state_changes_by_material(main_batches);
@@ -578,7 +643,12 @@ impl Renderer {
             *c.entry("shadow batches").or_default() +=
                 (shadow_batches[0].len() + shadow_batches[1].len()) as f64;
             // triangles each pass draws (thousands), the geometry the GPU goes through
-            let tris = |bs: &[Batch]| bs.iter().map(|b| b.count as f64 / 3.0 * b.instances.len() as f64).sum::<f64>() / 1000.0;
+            let tris = |bs: &[Batch]| {
+                bs.iter()
+                    .map(|b| b.count as f64 / 3.0 * b.instances.len() as f64)
+                    .sum::<f64>()
+                    / 1000.0
+            };
             *c.entry("ktris main").or_default() += tris(main_batches);
             *c.entry("ktris prepass").or_default() += tris(prepass_batches);
             *c.entry("ktris shadow near").or_default() += tris(&shadow_batches[0]);
@@ -591,7 +661,10 @@ impl Renderer {
             // goes through
             let mut assets: HashMap<&str, (usize, usize, u64)> = HashMap::new();
             for b in main_batches {
-                let source = scene.meshes[b.mesh as usize].source.as_deref().unwrap_or("procedural / vehicle");
+                let source = scene.meshes[b.mesh as usize]
+                    .source
+                    .as_deref()
+                    .unwrap_or("procedural / vehicle");
                 let cost = assets.entry(source).or_default();
                 cost.0 += 1;
                 cost.1 += b.instances.len();
@@ -600,11 +673,15 @@ impl Renderer {
             let mut assets: Vec<_> = assets.into_iter().collect();
             assets.sort_unstable_by(|a, b| b.1.0.cmp(&a.1.0).then(a.0.cmp(b.0)));
             for (source, (batches, draws, tris)) in assets.iter().take(12) {
-                log::info!("draw audit: {batches} batches, {draws} draws, {tris} triangles: {source}");
+                log::info!(
+                    "draw audit: {batches} batches, {draws} draws, {tris} triangles: {source}"
+                );
             }
             assets.sort_unstable_by(|a, b| b.1.2.cmp(&a.1.2).then(a.0.cmp(b.0)));
             for (source, (batches, draws, tris)) in assets.iter().take(12) {
-                log::info!("triangle audit: {tris} triangles in {draws} draws ({batches} batches): {source}");
+                log::info!(
+                    "triangle audit: {tris} triangles in {draws} draws ({batches} batches): {source}"
+                );
             }
         }
     }

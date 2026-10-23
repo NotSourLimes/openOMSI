@@ -54,3 +54,28 @@ mirrors, aggregate background refresh, redraw limits and zero-rate behavior.
 
 The changes reduce repeated preparation and unnecessary work. They do not imply
 a particular headset frame rate or establish the cause of a compositor error.
+
+## GPU diagnostics and offline reproduction
+
+`OMSI_GPU_TIMERS=1` now separates physical mirrors, desktop, left eye and right
+eye into independent query/readback slots. Existing pass figures partition the
+view's GPU timeline and include intervening untimed work. Additional `(interval)`
+figures measure each pass's own begin/end timestamps. They can overlap on tile
+GPUs and must not be summed as a frame time. `(all passes)` spans only the timed
+scene passes; it excludes OpenXR UI, the compositor and runtime pacing. Eye draw
+counts report visible meshes, AI meshes, batches and triangles separately.
+As in the desktop counters, "blended draws" also includes meshes that must follow
+the vehicle's authored draw order, even when some of their slots are opaque.
+Physical mirror time per frame remains a sampling estimate; its denominator now
+includes stereo pairs rather than relying on desktop renders that VR may omit.
+Normal free-drive shutdown also writes the ready GPU summaries and draw counts
+to the game log when GPU timers are enabled, without requiring a timed exit or
+waiting for pending timestamp readbacks.
+
+For repeatable local comparisons without an HMD, combine `--offscreen scene.png`
+with `OMSI_BENCH=360`, `OMSI_BENCH_STEREO=1`, `OMSI_GPU_TIMERS=1` and
+`OMSI_PROFILE=1`. `--size` is per eye. The synthetic pair has a symmetric 100-degree
+vertical FOV and 64 mm IPD; it is not a reproduction of the runtime's asymmetric
+projection, head motion or compositor scheduling. Both targets are rendered via
+the production stereo entry point. Completion waits belong only to this existing
+offline benchmark; the live OpenXR submission path gains no waits.

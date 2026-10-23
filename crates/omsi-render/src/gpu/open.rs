@@ -578,7 +578,7 @@ impl Renderer {
         );
         let (overlay_pipeline_1x, xr_ui_pipeline) = overlays.single_sampled(&device, format);
         let upscale = upscale::build(&device, format);
-        let gpu_timers = [GpuTimers::new(&device), GpuTimers::new(&device)];
+        let gpu_timers = std::array::from_fn(|_| GpuTimers::new(&device));
         // GLES cannot reliably read the depth buffer (the same limitation as SSAO).
         let puddles = (!gl && !passes.leave_out_enhanced).then(|| {
             puddles::Pipelines::new(
