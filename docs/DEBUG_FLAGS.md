@@ -232,6 +232,7 @@ effect. On Android, `openOMSI/env.txt` holds `NAME=value` lines that are set bef
 | `OMSI_SPOT_SELECT` | num | - | use | scene | Turn on spotlight n (headlight pictures). |
 | `OMSI_TEST_AVATAR` | text | - | test | sim | Test only: an avatar FBX for the avatar loading test (`cargo test -p omsi-sim a_rocketbox_avatar_loads -- --ignored`). |
 | `OMSI_TEST_CONTENT` | text | - | test | o3d, scene | Content root for tests that need real OMSI content. |
+| `OMSI_TEST_LEGACY_TROLLEY_DRIVE` | bool | off | test | sim | Test only: set by the trolley test on the child process it starts to run itself with the realistic physics on. |
 | `OMSI_TEST_PACKAGE_MAP` | text | - | test | launcher-model | Test only: the global.cfg of a map that carries a package, for the launcher route map test (`cargo test -p omsi-launcher-model the_package_of_a_real_map_is_exported -- --ignored`). |
 | `OMSI_TEST_WINE_DIR` | text | - | test | plugin | Plugin demo test: folder holding omsi-plugin-host.exe for Wine. |
 | `OMSI_TOBII_RAW` | text | - | test | input | Tests: a file for the Tobii tracker's raw poses (record_the_tracker_here). |
@@ -288,7 +289,7 @@ effect. On Android, `openOMSI/env.txt` holds `NAME=value` lines that are set bef
 | `OMSI_NO_CLOUDS` | bool | off | use | app | No clouds. |
 | `OMSI_NO_CORONAS` | bool | off | frame | render | No light coronas. |
 | `OMSI_NO_CULL` | bool | off | once | render | Draw every mesh from both sides (A/B). |
-| `OMSI_NO_DRAW_ORDER_DEPTH` | bool | off | once | render | An object's surfaces in one plane without the draw order's depth step (A/B). |
+| `OMSI_NO_DRAW_ORDER_DEPTH` | bool | off | once | render, scene | An object's surfaces in one plane, and a spline laid on an earlier one at its height, without the draw order's depth step (A/B). |
 | `OMSI_NO_ENHANCED` | bool | off | frame | render | Enhanced settings drawn with the plain path. |
 | `OMSI_NO_ENVMAP` | bool | off | use | scene | No environment maps. |
 | `OMSI_NO_FSR_MIP_BIAS` | bool | off | frame | render | FSR 1 without its textures' mip bias (to compare). |
@@ -296,6 +297,7 @@ effect. On Android, `openOMSI/env.txt` holds `NAME=value` lines that are set bef
 | `OMSI_NO_GLARE` | bool | off | frame | render | No sun glare. |
 | `OMSI_NO_GLASS_PICTURE` | bool | off | frame | render | No picture behind the glass (rain films). |
 | `OMSI_NO_GROUND_PAINT` | bool | off | use | scene | No painted ground layers. |
+| `OMSI_NO_GROUND_PASS` | bool | off | frame | render | The terrain's paint layers lit one by one again, not laid into one albedo picture first (A/B). |
 | `OMSI_NO_GROUND_SPLINE_BATCHING` | bool | off | use | scene | No batching of ground splines. |
 | `OMSI_NO_GUARD` | bool | off | use | guard, launcher-api | No start guard: a start that crashes or hangs is not healed by an update or by going back to the version before. |
 | `OMSI_NO_HARDWARE_ID` | bool | off | once | lan | LAN: the game sends no hardware identifier (a host can then turn the player away, and cannot ban the machine). |
