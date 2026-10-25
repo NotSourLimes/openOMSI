@@ -8,6 +8,33 @@ promoted to stable releases (see [docs/VERSIONING.md](docs/VERSIONING.md)); the 
 
 ### New
 
+- **Transport modes in the launcher**: maps and vehicles show their mode (tram, railway, metro,
+  trolleybus), the map and vehicle pickers can filter by it, and a vehicle that does not fit the
+  chosen map is marked with the reason and cannot be started (the game refuses it too).
+- **Signalling blocks, points and depot gates for the AI trains**: blocks of `signals.cfg` (given by
+  where they begin and end) hold AI trains one at a time, and the map's signal objects show
+  whether their block is free; the points of `switches.cfg` stay under a train, return to their
+  rest position, can be `manual` or locked by a signal; the first departure of a service comes out
+  of its depot's gate.
+- **The overhead wire and the third rail power the player's rail vehicle**: with a `catenary.cfg` or
+  `thirdrail.cfg` in the map's `transport` folder a tram's pantograph or a metro's shoe needs a live
+  section under it (dead sections and breaks stop the drive, a sagging line weakens it), a vehicle
+  says `[rail_power]` where it gets its current. `network.cfg` sets the class, street, third rail,
+  tunnel and speed of the rail lanes, and `switches.cfg` the speed of a diverging branch.
+- **AI trams, trains and metro trains by services**: the trips made from a map's `routes.cfg` are
+  routed by the game over the whole map's network (the lanes of the mode's kind nearest each
+  station, the shortest way through them, with the direction of the lanes respected) and timed
+  from the stretch lengths, the segment speeds, acceleration and the standing at stops; their
+  departures wait until the track is found, and a trip that cannot be routed is named in the log.
+- **Scripts for vehicles and map objects**: a vehicle can name Lua or `.oop` scripts with
+  `[vehicle_script]` that start when it becomes the player's and stop when it is left, with the
+  permissions of vehicle content (`ui`, `storage`, `vehicle_write`, `audio`). A `.sco` can name
+  scripts for the objects placed from it (`[lua_script]`, `[lua_range]`, `[lua_rate]`); they hear
+  `object_init`, `object_frame`, `object_click` and `object_gone` and drive their own objects
+  through the new `omsi.object.*` functions: variables, strings, `{trigger}`s, and moving,
+  turning, scaling or hiding single meshes. Scripts are told apart by their whole path, so two
+  folders may each hold a `gate.lua`. See [docs/PLUGINS.md](docs/PLUGINS.md) and
+  [docs/OBJECT_SCRIPTS.md](docs/OBJECT_SCRIPTS.md).
 - **Realistic rail physics** (with the setting "Realistic road physics", or `OMSI_REALISTIC_ROAD=1`;
   off by default, so no existing tram, train or trolleybus drives differently without it):
   - **Pantographs meet the wire**: a raised pantograph rises until its head touches the contact
@@ -30,6 +57,45 @@ promoted to stable releases (see [docs/VERSIONING.md](docs/VERSIONING.md)); the 
     until a script adapter can honor those controls. Explicitly configured trolleybus drives
     and pole simulation remain available.
 
+- **Rail traction, brakes and couplings**: `[rail_traction]` (a curve of pull against speed, a
+  power limit, an electric brake), `[rail_brake]` (air with a brake pipe wave and filling
+  cylinders, electro-pneumatic or direct; the electric brake first, the friction brake the rest)
+  and `[rail_coupler]` (free play, draft gear, strength; a train pulled apart breaks in two) for
+  pedal-driven trams, metro and railway vehicles. Without the blocks nothing changes. See
+  [docs/RAIL.md](docs/RAIL.md#traction-brakes-and-couplings-of-a-vehicle-openomsi-blocks).
+- **Scripts that belong to a vehicle**: `[vehicle_script]` in a `.bus` or `.ovh` names a Lua or
+  `.oop` script that runs as a plugin while that vehicle is the player's, with the plugin API and
+  the permissions of vehicle content only (`ui`, `storage`, `vehicle_write`, `audio`). See
+  [docs/PLUGINS.md](docs/PLUGINS.md#scripts-that-belong-to-a-vehicle).
+- **Suspension types**: an axle can say `[suspension]` with `type coil | leaf | air |
+  progressive`. Leaf springs stiffen and rub (dry friction between the leaves); air bellows hold
+  the ride height of the empty vehicle whatever the load, through a levelling valve; axles
+  without the block are OMSI 2's strut, unchanged. See [docs/SUSPENSION.md](docs/SUSPENSION.md).
+- **The `transport` folder of a map**: stations with platforms, **routes without tours** (a
+  route is segments from station to station and the services that run over them: a line with a
+  branch, a short-turn or an express is more segments and another service), the overhead wire,
+  a third rail, switches, depots, signals and blocks, in plain text files. Check them with the
+  `transit_check` example. The data is read when the map opens and the problems are logged, and
+  every service runs as a timetable line (one tour per departure and direction) in the launcher,
+  the duty and the AI. See
+  [docs/TRANSPORT_FORMATS.md](docs/TRANSPORT_FORMATS.md).
+- **Transport modes**: a vehicle and a map can say what kind of transport they are for with
+  `[bus_transport]`, `[tram_transport]`, `[railway_transport]`, `[metro_transport]` and
+  `[trolleybus_transport]`. A bus does not start on a tram map and says why; a map with none of
+  them takes every vehicle, and a vehicle with none is judged by its shape as before, so nothing
+  that works now changes. The launcher lists the modes of maps and vehicles; timetable vehicles
+  and the AI pool respect them. See [docs/TRANSPORT_MODES.md](docs/TRANSPORT_MODES.md).
+- **AI Lists** (Settings, the new *AI Lists* tab): choose, map by map, which AI cars, lorries and
+  buses the traffic is made of and which buses run on which line - only from what is installed
+  (the AI vehicles and the buses, with every repaint), nothing new is added. *Traffic* changes the
+  weighted lists of the random traffic (replace a car by another, add or remove one, set how often
+  it appears); *Depot buses* changes a depot's types, fleet numbers, plates and repaints; *Lines*
+  makes a line run only, or mostly, the types you choose (a type the line's depot lacks is added to
+  it with a few buses). Every list and the picker show the vehicle in the 3D preview of the Drive
+  page. The map's own files are never touched: the changes are kept in the content folder
+  (`ailists_#user.cfg` and `car_use/!openomsi-ai-lists-*.ocu` of the map's folder, the format OMSI
+  itself reads), a group or a line can be reset on its own, and *Reset the map* deletes them, which
+  gives the map's defaults back. Translated into every language of the launcher.
 - **LAN protocol 15**: a game of this version cannot join a session of an older one, nor the
   other way round (the AI traffic goes as a table, see below). Update the game on both sides.
 - **Every light casts a shadow** (Enhanced and Enhanced+): the lamps' shadow maps were four, now
@@ -388,6 +454,11 @@ promoted to stable releases (see [docs/VERSIONING.md](docs/VERSIONING.md)); the 
 
 ### Fixes
 
+- **The launcher's bus preview is no longer misted over**: the bus is made for it (the
+  showroom and `--export-glb`) on a mild day (22 °C) instead of at 0 °C, the temperature a
+  vehicle starts at without a weather. The
+  Kajosoft Citaro, Citaro Facelift and 628 fog every window up in their {init} below 10 °C,
+  so the preview always showed them misted; in the game the map's weather still decides.
 - **Köln's houses on Engeldorfer Straße are back**: a binary `.x` string ended by a WORD
   token, as PAD-Labs' exporter writes it, no longer swallows the `}` after it. Read as the
   documented DWORD, the house's material never closed, the model failed to load and its 25
