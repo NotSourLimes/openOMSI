@@ -21,6 +21,7 @@ mod submit;
 
 pub(crate) use batch::DrawPlan;
 pub(crate) use ground::GroundPlan;
+pub(crate) use cull::StereoCulling;
 pub(crate) use headlamp_shadow::{headlamp_shadow, own_headlamp, VehicleBox, HEADLAMP_SHADOW_REACH};
 pub(crate) use shadow::{CabinMotion, LampTiles};
 pub(crate) use shadow_plan::ShadowPlan;
@@ -120,6 +121,7 @@ impl FrameEnv {
 
 /// What `render_inner` was asked to draw.
 pub(crate) struct FrameArgs<'a> {
+    pub stereo: Option<&'a StereoCulling>,
     pub target: &'a wgpu::TextureView,
     pub width: u32,
     pub height: u32,
@@ -134,6 +136,7 @@ pub(crate) struct FrameArgs<'a> {
 /// What every phase of a frame shares: the view drawn, the frame's mode switches and its
 /// targets (see `Renderer::begin_frame`).
 pub(crate) struct FrameCtx<'a> {
+    pub stereo: Option<&'a StereoCulling>,
     pub env: FrameEnv,
     pub target: &'a wgpu::TextureView,
     pub camera: &'a Camera,

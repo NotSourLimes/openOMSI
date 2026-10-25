@@ -310,6 +310,7 @@ fn check_rain_eye(
         exclude_texture: None,
         projection: Some(projection),
         second_eye,
+        stereo: None,
     };
     let mut frame = s
         .renderer

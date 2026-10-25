@@ -221,9 +221,23 @@ pub(crate) fn render_mirrors(
     // (aimed from the eye of the view being drawn, as Omsi.exe aims them - from the
     // driver's without one)
     let eye = view.as_ref().map(|v| v.0.position).unwrap_or_else(|| driver_eye(p));
-    // the leading vehicle's cameras, then its rear sections' (openOMSI: numbered on from the
-    // last of the one in front, so a screen in the cab can show a camera on a rear door),
-    // each aimed and placed in its own body
+    let cams = mirror_cameras(p, eye);
+    if cams.is_empty() {
+        return 0;
+    }
+    render_mirror_cameras(
+        renderer, scene, world, lighting, pick, view, on_screen, cams,
+    )
+}
+
+/// Refresh selection never changes the eye used to aim a VR camera. Some buses
+/// use ordinary reflection cameras for CCTV too; keep their established view.
+pub(crate) fn render_vr_mirrors(renderer: &mut Renderer, scene: &mut Scene, world: &scene::World, lighting: &omsi_render::Lighting, due: &[usize], cameras: Vec<(omsi_vehicle::Camera, (DVec3, f32, f32, f32))>) {
+    render_mirror_cameras(renderer, scene, world, lighting, MirrorPick::Only(due), None, &[], cameras);
+}
+
+pub(crate) fn mirror_cameras(p: &Player, eye: DVec3) -> Vec<(omsi_vehicle::Camera, (DVec3, f32, f32, f32))> {
+    // Leading vehicle, then coupled parts, with the same numbering as textures.
     let v = &p.vehicle;
     let mut cams: Vec<(omsi_vehicle::Camera, (DVec3, f32, f32, f32))> = Vec::new();
     let aim = |i: usize, c: &omsi_vehicle::Camera, position: DVec3, rot: glam::Mat4| {
@@ -242,9 +256,20 @@ pub(crate) fn render_mirrors(
             cams.push((c, at));
         }
     }
-    if cams.is_empty() {
-        return 0;
-    }
+    cams
+}
+
+#[allow(clippy::too_many_arguments)]
+fn render_mirror_cameras(
+    renderer: &mut Renderer,
+    scene: &mut Scene,
+    world: &scene::World,
+    lighting: &omsi_render::Lighting,
+    pick: MirrorPick,
+    view: Option<(Camera, f32)>,
+    on_screen: &[usize],
+    cams: Vec<(omsi_vehicle::Camera, (DVec3, f32, f32, f32))>,
+) -> usize {
     let textures = world.mirror_textures.lock().clone();
     // small images: skip objects that would be tiny anyway (the original's
     // performance_minObjSizeRefl)
@@ -284,7 +309,7 @@ pub(crate) fn render_mirrors(
         MirrorPick::Only(set) => (0..cams.len()).filter(|i| set.contains(i)).collect(),
         MirrorPick::All(skip) | MirrorPick::Turn(_, skip) => (0..cams.len())
             .filter(|i| !skip.contains(i))
-            .filter(|&i| cams[i].0.fixed || on_screen.contains(&i) || view.as_ref().map(|v| mirror_in_view(cams[i].1 .0, cams[i].0.extra.unwrap_or(0.0).max(MIRROR_MIN_RADIUS), v)).unwrap_or(true))
+            .filter(|&i| cams[i].0.fixed || on_screen.contains(&i) || view.as_ref().map(|v| mirror_in_view(cams[i].1.0, cams[i].0.extra.unwrap_or(0.0).max(MIRROR_MIN_RADIUS), v)).unwrap_or(true))
             .collect(),
     };
     if seen.is_empty() {

@@ -2,6 +2,7 @@
 //! fallbacks when a device refuses a feature, and the post pass with its exposure metering.
 
 use crate::*;
+use crate::passes::StereoCulling;
 
 /// One single-sampled full-screen pass.
 pub(crate) fn post_pass(
@@ -298,7 +299,8 @@ impl Renderer {
         if self.targets.triple_targets.take().is_some() {
             self.history.triple_culling = Default::default();
         }
-        self.render_inner(scene, target, width, height, camera, lighting, true, None, None, false);
+        self.render_inner(scene, target, width, height, camera, lighting, true, None, None, false, None,
+        );
     }
 
     /// Three independently culled and shaded physical panels, composited into a
@@ -393,6 +395,7 @@ impl Renderer {
                 None,
                 Some(views[i].projection),
                 turn != 0,
+                None,
             );
             self.swap_triple_culling(i);
         }
@@ -465,7 +468,7 @@ impl Renderer {
         second_eye: bool,
     ) {
         self.swap_xr_culling(second_eye as usize);
-        self.render_inner(scene, target, width, height, camera, lighting, false, None, Some(projection), second_eye);
+        self.render_inner(scene, target, width, height, camera, lighting, false, None, Some(projection), second_eye, None);
         self.swap_xr_culling(second_eye as usize);
     }
 
@@ -473,9 +476,83 @@ impl Renderer {
         // As with triple-screen panels, an eye must use its own previous view,
         // and leave the desktop's history intact when returning from the draw.
         let history = &mut self.history.xr_culling[eye];
+        std::mem::swap(self.history.main_bundles.get_mut(), &mut history.bundles);
         std::mem::swap(self.history.cull_drawn.get_mut(), &mut history.drawn);
         std::mem::swap(self.history.object_sizes.get_mut(), &mut history.sizes);
         std::mem::swap(self.history.object_sizes_scratch.get_mut(), &mut history.scratch);
+    }
+
+    /// Draw a stereo pair from one immutable scene snapshot. Shared preparation
+    /// is charged to the first eye's CPU duration. Draw lists, LOD hysteresis and
+    /// transparency sorting remain per eye; standalone eye rendering still works.
+    pub fn render_xr_stereo(
+        &mut self,
+        scene: &mut Scene,
+        targets: [&wgpu::TextureView; 2],
+        size: (u32, u32),
+        cameras: &[Camera; 2],
+        lighting: &Lighting,
+        projections: &[Mat4; 2],
+    ) -> [std::time::Duration; 2] {
+        let start = std::time::Instant::now();
+        if !self.frame_hooks(scene, &FrameEnv::read(), false) {
+            return [std::time::Duration::ZERO; 2];
+        }
+        if (cameras[0].position - scene.render_origin)
+            .abs()
+            .max_element()
+            > 200.0
+        {
+            self.set_render_origin(scene, (cameras[0].position / 100.0).floor() * 100.0);
+        }
+        // Unusual callers can supply widely separated views. Keep the original
+        // per-view upload path if the second view would move the render origin.
+        let shared = (cameras[1].position - scene.render_origin)
+            .abs()
+            .max_element()
+            <= 200.0;
+        let culling = if shared {
+            self.prepare(scene);
+            Some(StereoCulling::new(
+                scene,
+                cameras,
+                projections,
+                lighting,
+                self.texture_aspect
+                    .unwrap_or(size.0 as f32 / size.1.max(1) as f32),
+                lighting.enhanced
+                    && self.hdr_pass.is_some()
+                    && !omsi_cfg::flags::OMSI_NO_ENHANCED.is_set(),
+                self.shadow_blobs,
+            ))
+        } else {
+            None
+        };
+        let mut times = [std::time::Duration::ZERO; 2];
+        for eye in 0..2 {
+            let eye_start = if eye == 0 {
+                start
+            } else {
+                std::time::Instant::now()
+            };
+            self.swap_xr_culling(eye);
+            self.render_inner(
+                scene,
+                targets[eye],
+                size.0,
+                size.1,
+                &cameras[eye],
+                lighting,
+                false,
+                None,
+                Some(projections[eye]),
+                eye == 1,
+                culling.as_ref(),
+            );
+            self.swap_xr_culling(eye);
+            times[eye] = eye_start.elapsed();
+        }
+        times
     }
 
     /// Composite the shared game menu and a world-positioned pointer into each eye.
@@ -667,6 +744,7 @@ impl Renderer {
         exclude_texture: Option<TextureId>,
         projection: Option<Mat4>,
         second_eye: bool,
+        stereo: Option<&StereoCulling>,
     ) {
         // the frame's switches from the environment, each read once
         let env = FrameEnv::read();
@@ -687,7 +765,9 @@ impl Renderer {
         };
         // OMSI_PROFILE: time per stage, the mirrors apart from the window's picture
         let mut clock = StageClock::new(with_overlays);
-        let args = FrameArgs { target, width, height, camera, lighting, with_overlays, exclude_texture, projection, second_eye };
+        let args = FrameArgs { target, width, height, camera, lighting, with_overlays, exclude_texture, projection, second_eye,
+            stereo,
+        };
         let f = self.begin_frame(scene, env, args, &mut clock);
         let sh = self.plan_shadow_cache(scene, &f);
         let (vp_mat, cu, probe_redraw) = self.frame_uniforms(scene, &f, &sh, &mut clock);

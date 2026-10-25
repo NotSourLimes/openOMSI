@@ -1,6 +1,6 @@
 use super::*;
 
-fn player() -> Player {
+pub(super) fn player() -> Player {
     // A bounded control, like an authored door with physical end stops.
     let mut vehicle = crate::schedule::tests::script_test_vehicle(
         "{trigger:knob_drag}\n(L.L.value) (L.S.mouse_y) 100 / + 0 max 1 min (S.L.value)\n{end}\n\

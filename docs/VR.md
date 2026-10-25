@@ -123,3 +123,27 @@ Native GPU regressions compare both eye images at 1x/4x MSAA and validate rainy
 same-sized desktop/eye transitions. Per-eye history and stereo preparation remain
 separate changes. The upstream FSR 1 eye scale and mip-bias path is retained;
 a native regression covers both eyes at 75% scale with 1x/4x MSAA.
+
+
+## Stereo preparation and mirror refresh
+
+The stereo renderer prepares the shared scene and broad-phase candidates once per
+pair. Each eye keeps its own visibility, authored vehicle LOD decisions, size
+history, transparent sorting and render bundles. AI meshes may skip subpixel
+fittings in headset views; emissive and night-mapped materials remain visible.
+Widely separated views fall back to independent preparation.
+
+VR mirror refresh follows the surfaces using each mirror texture in either eye,
+including animated meshes and coupled vehicle parts. Camera position is not a
+proxy for screen position: an upper-deck camera can feed a monitor in the cab.
+Unknown consumers and fixed cameras keep refreshing. Newly visible surfaces get
+a fresh image immediately; otherwise the configured total redraw budget applies,
+with at most one hidden refresh per second. Zero freezes existing images;
+the explicit -1 override still refreshes every camera each frame.
+
+The headset only controls refresh selection. Camera aiming uses the same driver
+reference and authored settings as the existing VR path, including CCTV feeds
+that use ordinary reflection-camera declarations. It does not add headset-driven
+mirror perspective. Desktop mirror behavior, OpenXR queue ordering and image
+ownership are unchanged. Synthetic GPU regressions are separate from live
+headset validation; no measured FPS improvement is claimed for this change.

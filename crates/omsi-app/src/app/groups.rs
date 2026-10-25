@@ -207,6 +207,7 @@ pub(crate) struct GfxState {
     pub(crate) mirror_dt: f32,
     pub(crate) mirrors_seen: usize,
     pub(crate) mirror_turn: usize,
+    pub(crate) vr_mirrors: crate::vr_mirrors::Schedule,
     /// The mirrors the panels show, drawn every frame (kept for its room).
     pub(crate) mirror_panel_cams: Vec<usize>,
     /// With no real-time reflections: the bus whose mirrors are frozen (see

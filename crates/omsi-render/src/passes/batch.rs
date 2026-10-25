@@ -699,7 +699,7 @@ impl Renderer {
             // traffic moves, come last), the parts before them are kept.
             // The mirrors' the same, each its own (by its picture's texture): two or three
             // mirror pictures a frame recorded some 1.5 ms of bundles each.
-            let kept = f.with_overlays && f.projection.is_none() && !f.second_eye;
+            let kept = (f.with_overlays && f.projection.is_none() && !f.second_eye) || (!f.with_overlays && f.xr_view);
             let mirror = (!f.with_overlays && !f.second_eye).then_some(f.exclude_texture).flatten();
             let mode = (f.enhanced, f.reflection_frame, format, self.options.msaa, rt_gbuf() && !f.eye_color,
             );
@@ -725,7 +725,7 @@ impl Renderer {
                             }
                         }
                         if reuse.iter().all(Option::is_some) && c.parts.len() == chunks.len() {
-                            if kept {
+                            if f.with_overlays {
                                 self.history.bundle_stats.set((0, reuse.len()));
                             }
                             return reuse.into_iter().flatten().collect();

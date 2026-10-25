@@ -35,6 +35,7 @@ pub struct Vr {
     origin_rotation: Option<Quat>,
     smoothed_head: Option<(Vec3, Quat, Instant)>,
     mirror_camera: Option<(Camera, Mat4)>,
+    mirror_views: Option<[(Camera, Mat4); 2]>,
     menu_anchor: Option<UiAnchor>,
     cursor_anchor: Option<UiAnchor>,
     cursor_surface_local: Option<Vec3>,
@@ -357,6 +358,7 @@ impl Vr {
             origin_rotation: None,
             smoothed_head: None,
             mirror_camera: None,
+            mirror_views: None,
             menu_anchor: None,
             cursor_anchor: None,
             cursor_surface_local: None,
@@ -416,6 +418,7 @@ impl Vr {
         self.origin_rotation = None;
         self.smoothed_head = None;
         self.mirror_camera = None;
+        self.mirror_views = None;
         self.menu_anchor = None;
         self.recenter_pointer();
     }
@@ -512,6 +515,12 @@ impl Vr {
 
     pub fn navigator_edit_camera(&self) -> Option<Camera> {
         self.mirror_camera.map(|(camera, _)| camera)
+    }
+
+    /// Last submitted eye views for conservative mirror refresh selection. The
+    /// caller allows head-motion margin and initializes unseen textures first.
+    pub fn mirror_views(&self) -> Option<[(Camera, Mat4); 2]> {
+        self.mirror_views
     }
 
     pub fn render(
@@ -658,7 +667,6 @@ impl Vr {
         let mut ui_projections = [Mat4::IDENTITY; 2];
         let stereo_center = (xr_position(eye_poses[0]) + xr_position(eye_poses[1])) * 0.5;
         for (eye, xr_view) in views.iter().enumerate() {
-            let eye_start = Instant::now();
             let tracked_eye = xr_position(eye_poses[eye]);
             let tracked_relative = origin_rotation.inverse() * (tracked_eye - origin);
             // A narrower picture magnifies stereo disparity. Reduce the virtual
@@ -683,17 +691,22 @@ impl Vr {
             if eye == 0 {
                 self.mirror_camera = Some((camera, projection));
             }
-            renderer.render_xr_eye(
+        }
+        self.mirror_views = Some(std::array::from_fn(|eye| {
+            (eye_cameras[eye], eye_projections[eye])
+        }));
+        let eye_times = renderer.render_xr_stereo(
                 scene,
-                &targets[eye],
-                self.width,
-                self.height,
-                &camera,
+            [&targets[0],
+                &targets[1]],
+            (self.width,
+                self.height),
+                &eye_cameras,
                 lighting,
-                projection,
-                eye == 1,
-            );
-            self.stats_eyes[eye] += eye_start.elapsed();
+            &eye_projections,
+        );
+        for (total, elapsed) in self.stats_eyes.iter_mut().zip(eye_times) {
+            *total += elapsed;
         }
         renderer.set_env_heading(None);
         let menu_open = !menu_range.is_empty();

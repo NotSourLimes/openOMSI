@@ -671,6 +671,8 @@ fn new_player(vehicle: omsi_sim::VehicleInstance, render: scene::VehicleRender, 
 
 #[cfg(test)]
 mod cabin_input_tests;
+#[cfg(test)]
+mod vr_mirror_tests;
 
 /// `OMSI_DEBUG_MESHES`: every mesh of the vehicle with its bounds, and per material slot (of the
 /// meshes whose file the flag names) which part of its texture it shows.

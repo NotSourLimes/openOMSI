@@ -61,7 +61,9 @@ impl Renderer {
     /// The frame's modes (render scale, Enhanced, the reflections, the prepass, ray
     /// tracing) and the targets they need, the lights, coronas and smoke prepared.
     pub(crate) fn begin_frame<'a>(&mut self, scene: &mut Scene, env: FrameEnv, a: FrameArgs<'a>, clock: &mut StageClock) -> FrameCtx<'a> {
-        let FrameArgs { target, width, height, camera, lighting, with_overlays, exclude_texture, projection, second_eye } = a;
+        let FrameArgs { target, width, height, camera, lighting, with_overlays, exclude_texture, projection, second_eye,
+            stereo,
+        } = a;
         // render origin: the camera position rounded to 100 m, kept while the camera stays near it
         if (camera.position - scene.render_origin).abs().max_element() > 200.0 {
             self.set_render_origin(scene, (camera.position / 100.0).floor() * 100.0);
@@ -193,7 +195,9 @@ impl Renderer {
             dt
         };
         clock.stage(self, "setup", "mirror.setup");
-        self.prepare(scene);
+        if stereo.is_none() {
+            self.prepare(scene);
+        }
         clock.stage(self, "prepare", "mirror.prepare");
         // overlay uniforms/bind groups (rects in pixels → NDC)
         let overlays: Vec<(TextureId, [f32; 4])> = if with_overlays {
@@ -205,6 +209,7 @@ impl Renderer {
             self.prepare_overlays(scene, full_w, full_h);
         }
         FrameCtx {
+            stereo,
             env,
             target,
             camera,

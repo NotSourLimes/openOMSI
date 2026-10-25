@@ -70,6 +70,7 @@ use omsi_scene::lights;
 mod launcher;
 mod menu;
 mod mirror_hud;
+mod vr_mirrors;
 use omsi_navigator as navigator;
 mod vr_navigator;
 use omsi_scene::money;
@@ -635,6 +636,7 @@ fn assemble_app(args: Args, settings: settings::Settings) -> App {
             mirror_dt: 0.0,
             mirrors_seen: 2,
             mirror_turn: 0,
+            vr_mirrors: Default::default(),
             mirror_panel_cams: Vec::new(),
             frozen_mirrors: None,
             mirror_hud: Default::default(),
