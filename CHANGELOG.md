@@ -8,6 +8,28 @@ promoted to stable releases (see [docs/VERSIONING.md](docs/VERSIONING.md)); the 
 
 ### New
 
+- **Realistic rail physics** (with the setting "Realistic road physics", or `OMSI_REALISTIC_ROAD=1`;
+  off by default, so no existing tram, train or trolleybus drives differently without it):
+  - **Pantographs meet the wire**: a raised pantograph rises until its head touches the contact
+    wire and no further (the head's travel is measured on the model's own meshes and animations;
+    the script's variable is left alone, only the animation is shown the travel at which the head
+    is on the wire), presses it with its static force, and brings current only while it lies on a
+    live wire. The wire is the standard height of the class over the rails (kept within the
+    pantograph's reach; it is not read from the map yet), staggered across the track, harder at
+    forks and rougher in the wet and the frost. Where the wire is uneven at speed the head leaves
+    it: a break under current strikes an arc, drawn as sparks and a flash; lowering under load does
+    the same. `Panto_Height`, `Panto_Contact`, `Panto_Force`, `Panto_Arc` and `Panto_Powered` are
+    written for models and sounds.
+  - **Rail bodies ride on their springs**: heave, pitch and roll on the secondary suspension answer
+    the lateral acceleration of a bend, the traction and the brake and the unevenness of the rails
+    at each bogie, with damping. `rail_body_roll`, `rail_body_pitch`, `rail_body_heave`,
+    `rail_accel_side` and `rail_accel_vert` are written for scripts.
+  - **AI trams and trains** pull as their class does: the pull falls with speed at the class's power.
+  - **Legacy trolleybuses keep their script's traction**, including its gear and door-brake
+    interlocks, even with realistic physics enabled. An inferred generic drive stays inactive
+    until a script adapter can honor those controls. Explicitly configured trolleybus drives
+    and pole simulation remain available.
+
 - **LAN protocol 15**: a game of this version cannot join a session of an older one, nor the
   other way round (the AI traffic goes as a table, see below). Update the game on both sides.
 - **Every light casts a shadow** (Enhanced and Enhanced+): the lamps' shadow maps were four, now
@@ -366,6 +388,37 @@ promoted to stable releases (see [docs/VERSIONING.md](docs/VERSIONING.md)); the 
 
 ### Fixes
 
+- **Köln's houses on Engeldorfer Straße are back**: a binary `.x` string ended by a WORD
+  token, as PAD-Labs' exporter writes it, no longer swallows the `}` after it. Read as the
+  documented DWORD, the house's material never closed, the model failed to load and its 25
+  binary houses were missing since 0.3.38.
+- **Bus shelters show through a bus's windows** instead of a white shape in Enhanced and
+  Enhanced+, or nothing at all in Vanilla. Grundorf's shelter is drawn "after vehicles"
+  (`[rendertype] 4`) and the bus's panes write depth, so it failed the depth test behind them,
+  and the houses behind it were already gone. The blended draws of `[rendertype]` 3 and 4 are
+  now sorted far to near with the normal objects', after the opaque draws of all of them
+  ([#2852](https://github.com/openOMSI-org/openOMSI/issues/2852)).
+- **Destination displays light up at night in Enhanced and Enhanced+**: a script's screen is
+  never taken for a pane. The EMT Citaro's Krueger matrix (Mallorca) is blended, writes no
+  depth and draws its letters through a `\S:n` transparency map - the layout of a window - so
+  the Enhanced pictures shaded it as glass, which gives no light of its own: its light map was
+  left out and its letters stayed grey at night, where Vanilla+ lights them
+  ([#2927](https://github.com/openOMSI-org/openOMSI/issues/2927)).
+- **London's road markings and red bus lanes stay put** when the camera moves away or around
+  the bus ([#2853](https://github.com/openOMSI-org/openOMSI/issues/2853)). A cut-out strip lying
+  just over the driving surface its spline declares (`[heightprofile]`) is paint, as one lying
+  just over the spline's line already was: Road-hog123's British markings lie 5 mm over a
+  10 cm surface. A spline laid on an earlier spline of its tile at the same height is drawn
+  over it, as Omsi.exe draws a tile's splines in order (the red lanes over the road fought it
+  for every pixel). And a spline laid on a `[surface]` object - Crystal Palace's carriageway is
+  one, its own tile's or the next one's - is pulled towards the eye as the object is, which
+  covered it from a few metres away or from above. `OMSI_NO_DRAW_ORDER_DEPTH=1` turns the
+  last two off.
+- **A paint scheme's `[setvar]` is what the bus shows**, also when a script writes the same
+  variable every frame: the scheme's values are set again after the scripts, as Omsi.exe
+  draws them. The Kajosoft Jelcz Vectus with the JGSP Novi Sad repaint chooses the glazed
+  doors (`v_drzwi 1`) and had the standard doors' white frames
+  ([#3183](https://github.com/openOMSI-org/openOMSI/issues/3183)).
 - **The MAN DN95 is no longer a mirror**: a texture a model asks for as `.dds` that is not
   there is missing, as in OMSI, instead of being stood in for by a `.bmp` or another file of the
   same name. The DN95's body asks for an `envmap.dds` it does not ship; its `envmap.bmp` (the
